@@ -1,0 +1,442 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Стакан себестоимости</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600&family=Rubik:wght@500;600&display=swap">
+<style>
+/* Рабочий отчёт: итоги стакана сверху, таблица блюд по слоям стакана, по клику — стакан блюда столбиком и его состав */
+:root {
+  --bg: #FBFBF9; --panel: #FFFFFF; --fg: #333333; --muted: #6B7280; --line: #E6E8E3;
+  --green: #2DBE64; --green-dark: #1FA854; --green-soft: #EAF9EF; --warn: #D7144B; --warn-soft: #FDECF1;
+  --l-raw: #1FA854; --l-pack: #9AE894; --l-art: #8FA3B8; --l-margin: #F2B33D; --l-transp: #C9CDD3;
+  --font-head: "Rubik", "Segoe UI", system-ui, sans-serif;
+  --font-body: "Onest", "Segoe UI", system-ui, sans-serif;
+  --r: 14px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #15181A; --panel: #1E2225; --fg: #E8EAEC; --muted: #9AA1A9; --line: #30363B;
+    --green-soft: #183326; --warn: #FF5C86; --warn-soft: #3A1C25;
+    --l-pack: #6FCB6A; --l-art: #7489A0; --l-transp: #5B636B;
+    color-scheme: dark;
+  }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.45 var(--font-body); }
+.wrap { max-width: 1400px; margin: 0 auto; padding-block: 28px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+h1, h2 { font-family: var(--font-head); font-weight: 600; margin: 0; text-wrap: balance; }
+h1 { font-size: clamp(22px, 3vw, 30px); }
+h2 { font-size: 16px; }
+.eyebrow { color: var(--green-dark); font-weight: 600; font-size: 12px; letter-spacing: .06em; text-transform: uppercase; }
+.sub { color: var(--muted); margin-top: 6px; max-width: 80ch; }
+.num { font-variant-numeric: tabular-nums; }
+header { display: grid; gap: 4px; margin-bottom: 20px; }
+
+.tiles { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr)); }
+.tile { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 14px 16px; min-width: 0; }
+.tile .label { color: var(--muted); font-size: 12px; }
+.tile .value { font-family: var(--font-head); font-size: 26px; font-weight: 500; margin-top: 2px; }
+.tile.alert .value { color: var(--warn); }
+.avg { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 14px 16px; margin-top: 12px; }
+.avg .label { color: var(--muted); font-size: 12px; margin-bottom: 10px; }
+
+.stack { display: flex; height: 12px; border-radius: 6px; overflow: hidden; background: var(--line); }
+.avg .stack { height: 28px; border-radius: 8px; }
+.stack span { display: block; height: 100%; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 16px; margin-top: 8px; font-size: 12px; color: var(--muted); }
+.sw { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 6px; vertical-align: -1px; }
+
+.filters { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin: 22px 0 12px; }
+.filters input, .filters select { font: inherit; color: var(--fg); background: var(--panel); border: 1px solid var(--line);
+  border-radius: 10px; padding: 8px 12px; min-width: 0; }
+.filters input { flex: 1 1 240px; }
+.filters select { flex: 0 1 260px; }
+.filters input:focus-visible, .filters select:focus-visible, button:focus-visible, tr:focus-visible { outline: 2px solid var(--green); outline-offset: 1px; }
+.count { color: var(--muted); margin-left: auto; }
+
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); }
+.table-box { overflow: auto; max-height: 74vh; border-radius: var(--r); }
+table { border-collapse: collapse; width: 100%; }
+th, td { padding: 9px 10px; text-align: left; border-bottom: 1px solid var(--line); vertical-align: middle; }
+th { position: sticky; top: 0; z-index: 1; background: var(--panel); font-weight: 500; color: var(--muted); font-size: 12px; white-space: nowrap; }
+th .sw { margin-right: 4px; }
+th button { all: unset; cursor: pointer; }
+th button:hover { color: var(--fg); }
+th[aria-sort="ascending"] button::after { content: " ↑"; }
+th[aria-sort="descending"] button::after { content: " ↓"; }
+td.r, th.r { text-align: right; }
+td.r small { display: block; color: var(--muted); font-size: 11px; }
+td.strong { font-weight: 600; }
+td.sep, th.sep { border-left: 1px solid var(--line); }
+tbody tr.dish { cursor: pointer; }
+tbody tr.dish:hover, tbody tr.dish.open { background: var(--green-soft); }
+.name { min-width: 220px; max-width: 340px; }
+.name small { display: block; color: var(--muted); }
+.bar-cell { min-width: 120px; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; max-width: 240px; }
+.chip { font-size: 11px; line-height: 1.3; padding: 2px 7px; border-radius: 999px; background: var(--warn-soft); color: var(--warn); white-space: nowrap; }
+.ok { color: var(--green-dark); font-size: 12px; }
+.muted { color: var(--muted); }
+.neg { color: var(--warn); }
+
+.detail td { background: var(--bg); padding: 16px; }
+.detail-grid { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr)); }
+.detail .card { padding: 14px 16px; min-width: 0; }
+.glass-wrap { display: flex; gap: 20px; align-items: flex-end; margin-top: 12px; flex-wrap: wrap; }
+.glass { position: relative; width: 96px; height: 240px; border: 2px solid var(--line); border-top: none;
+  border-radius: 0 0 14px 14px; display: flex; flex-direction: column-reverse; overflow: hidden; flex: none; }
+.glass span { display: block; width: 100%; }
+.glass .cost-line { position: absolute; left: -2px; right: -2px; border-top: 2px dashed var(--fg); }
+.kv { display: grid; grid-template-columns: auto 1fr auto auto; gap: 4px 12px; align-items: baseline; flex: 1 1 220px; min-width: 0; }
+.kv .h { color: var(--muted); font-size: 12px; }
+.kv .total { font-weight: 600; border-top: 1px solid var(--line); padding-top: 4px; }
+.kv .strong { font-weight: 600; }
+.kv .bad { color: var(--warn); }
+.comp { margin-top: 16px; }
+.comp table th { position: static; background: transparent; }
+.comp td, .comp th { padding: 6px 8px; font-size: 13px; }
+.comp .layer td { font-weight: 600; padding-top: 12px; }
+.note { color: var(--muted); font-size: 12px; margin-top: 10px; }
+footer { color: var(--muted); font-size: 12px; margin-top: 18px; }
+.error { color: var(--warn); padding: 20px; }
+.gate { max-width: 380px; margin: 12vh auto 0; background: var(--panel); border: 1px solid var(--line); border-radius: var(--r); padding: 24px; display: grid; gap: 12px; }
+.gate input { font: inherit; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+.gate input:focus-visible, .gate button:focus-visible { outline: 2px solid var(--green); outline-offset: 1px; }
+.gate button { font: inherit; font-weight: 600; color: #fff; background: var(--green-dark); border: 0; border-radius: 10px; padding: 10px 12px; cursor: pointer; }
+.gate button:disabled { opacity: .6; cursor: wait; }
+.gate .msg { color: var(--warn); font-size: 13px; min-height: 1.2em; }
+</style>
+</head>
+<body>
+<div class="wrap" id="gate-wrap">
+  <div class="gate">
+    <div class="eyebrow">ВкусВилл</div>
+    <h1>Стакан себестоимости</h1>
+    <div class="muted">Отчёт закрыт паролем.</div>
+    <input id="g-pass" type="password" autocomplete="current-password" placeholder="Пароль" aria-label="Пароль">
+    <button id="g-btn" type="button">Открыть</button>
+    <div class="msg" id="g-msg" role="alert"></div>
+  </div>
+</div>
+<div class="wrap" id="app" hidden>
+  <header>
+    <div class="eyebrow">ВкусВилл · согласованные блюда</div>
+    <h1>Стакан себестоимости</h1>
+    <div class="sub" id="takeaway">Загрузка данных…</div>
+  </header>
+
+  <section class="tiles" aria-label="Итоги">
+    <div class="tile"><div class="label">Блюд</div><div class="value num" id="t-dishes">—</div></div>
+    <div class="tile"><div class="label">Медианная себестоимость</div><div class="value num" id="t-cost">—</div></div>
+    <div class="tile"><div class="label">Медианная цена</div><div class="value num" id="t-price">—</div></div>
+    <div class="tile"><div class="label">Медианная маржа к себестоимости</div><div class="value num" id="t-margin">—</div></div>
+    <div class="tile alert"><div class="label">Блюд с замечаниями по стакану</div><div class="value num" id="t-issues">—</div></div>
+  </section>
+  <section class="avg" aria-label="Средний стакан">
+    <div class="label">Средний стакан: доля каждого слоя в цене блюда</div>
+    <div class="stack" id="t-stack"></div><div class="legend" id="t-legend"></div>
+  </section>
+
+  <div class="filters">
+    <input id="f-search" type="search" placeholder="Поиск по названию или артикулу" aria-label="Поиск">
+    <select id="f-category" aria-label="Категория"><option value="">Все категории</option></select>
+    <select id="f-issue" aria-label="Замечания">
+      <option value="">Все блюда</option>
+      <option value="__any">С замечаниями</option>
+      <option value="__none">Без замечаний</option>
+    </select>
+    <span class="count num" id="f-count"></span>
+  </div>
+
+  <div class="card">
+    <div class="table-box">
+      <table id="dishes">
+        <thead><tr>
+          <th data-k="name"><button>Блюдо</button></th>
+          <th data-k="category_id"><button>Категория</button></th>
+          <th data-k="weight_g" class="r"><button>Вес, г</button></th>
+          <th data-k="raw" class="r sep"><button><i class="sw" style="background:var(--l-raw)"></i>Сырьё</button></th>
+          <th data-k="packaging" class="r"><button><i class="sw" style="background:var(--l-pack)"></i>Упаковка</button></th>
+          <th data-k="articles" class="r"><button><i class="sw" style="background:var(--l-art)"></i>Статьи затрат</button></th>
+          <th data-k="cost_total" class="r"><button>Себестоимость</button></th>
+          <th data-k="margin" class="r"><button><i class="sw" style="background:var(--l-margin)"></i>Маржа</button></th>
+          <th data-k="transport" class="r"><button><i class="sw" style="background:var(--l-transp)"></i>Транспорт</button></th>
+          <th data-k="price" class="r"><button>Цена</button></th>
+          <th data-k="price_per_kg" class="r sep"><button>₽/кг</button></th>
+          <th class="bar-cell">Стакан</th>
+          <th data-k="issues"><button>Проверка</button></th>
+        </tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+  <footer id="footer"></footer>
+</div>
+
+<script>
+const LAYERS = [
+  { k: 'raw', name: 'Сырьё', color: 'var(--l-raw)' },
+  { k: 'packaging', name: 'Упаковка', color: 'var(--l-pack)' },
+  { k: 'articles', name: 'Статьи затрат', color: 'var(--l-art)' },
+  { k: 'margin', name: 'Маржа', color: 'var(--l-margin)' },
+  { k: 'transport', name: 'Транспорт', color: 'var(--l-transp)' },
+];
+const COLS = 13;
+const nf = (d) => new Intl.NumberFormat('ru-RU', { maximumFractionDigits: d, minimumFractionDigits: 0 });
+const rub = (v, d = 2) => v == null ? '—' : nf(d).format(v);
+const pct = (v) => v == null || !isFinite(v) ? '—' : nf(0).format(v) + '%';
+const median = (xs) => { const s = xs.filter((v) => v != null && isFinite(v)).sort((a, b) => a - b); return s.length ? s[Math.floor(s.length / 2)] : null; };
+const el = (tag, props = {}, ...kids) => {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(props)) {
+    if (k === 'class') e.className = v; else if (k === 'style') e.style.cssText = v; else e[k] = v;
+  }
+  for (const c of kids) if (c != null) e.append(c);
+  return e;
+};
+const swatch = (color) => el('i', { class: 'sw', style: `background:${color}` });
+
+let DISHES = [], COMP = new Map(), META = {}, sortKey = 'issues', sortDir = -1, openId = null;
+const costIssues = (d) => d.issues.filter((i) => META.checks_cost.includes(i));
+
+function stackBar(d) {
+  const bar = el('div', { class: 'stack' });
+  const total = LAYERS.reduce((s, l) => s + Math.max(0, d[l.k] || 0), 0);
+  if (!total) return bar;
+  for (const l of LAYERS) {
+    const v = Math.max(0, d[l.k] || 0);
+    if (v) bar.append(el('span', { style: `width:${v / total * 100}%;background:${l.color}`, title: `${l.name}: ${rub(v)} ₽ (${pct(v / total * 100)})` }));
+  }
+  return bar;
+}
+
+function renderSummary() {
+  const withIssues = DISHES.filter((d) => costIssues(d).length).length;
+  document.getElementById('t-dishes').textContent = nf(0).format(DISHES.length);
+  const mc = median(DISHES.map((d) => d.cost_total || null)), mp = median(DISHES.map((d) => d.price || null));
+  document.getElementById('t-cost').textContent = mc == null ? '—' : rub(mc, 0) + ' ₽';
+  document.getElementById('t-price').textContent = mp == null ? '—' : rub(mp, 0) + ' ₽';
+  document.getElementById('t-margin').textContent = pct(median(DISHES.map((d) => d.margin_pct)));
+  document.getElementById('t-issues').textContent = nf(0).format(withIssues);
+
+  const priced = DISHES.filter((d) => d.price > 0);
+  const share = LAYERS.map((l) => ({ ...l, v: priced.reduce((s, d) => s + Math.max(0, d[l.k] || 0) / d.price, 0) / priced.length * 100 }));
+  document.getElementById('t-stack').replaceChildren(...share.map((l) =>
+    el('span', { style: `width:${l.v}%;background:${l.color}`, title: `${l.name}: ${pct(l.v)}` })));
+  document.getElementById('t-legend').replaceChildren(...share.map((l) => el('span', {}, swatch(l.color), `${l.name} ${pct(l.v)}`)));
+
+  const rawBad = DISHES.filter((d) => d.issues.includes('Сырьё ≠ сумме ингредиентов')).length;
+  const negMargin = DISHES.filter((d) => d.margin < 0).length;
+  document.getElementById('takeaway').textContent =
+    `Себестоимость — это сырьё, упаковка и статьи затрат; цена — себестоимость плюс маржа и транспорт. ` +
+    `В среднем сырьё даёт ${pct(share[0].v)} цены, статьи затрат ${pct(share[2].v)}. ` +
+    `Проверить стоит ${withIssues} блюд: у ${rawBad} итог сырья не сходится с суммой ингредиентов, у ${negMargin} маржа отрицательная.`;
+  document.getElementById('footer').textContent =
+    `Блюда в статусе «согласовано». Суммы с НДС, где он заполнен, иначе без НДС. ` +
+    `Данные сервиса на ${META.data_updated_at}, файл «${META.source}», собрано ${META.built_at}.`;
+
+  const cats = [...new Set(DISHES.map((d) => d.category_id))].sort();
+  document.getElementById('f-category').append(...cats.map((c) =>
+    el('option', { value: c, textContent: `Категория ${c} (${DISHES.filter((d) => d.category_id === c).length})` })));
+  document.getElementById('f-issue').append(...META.checks_cost.map((c) => {
+    const n = DISHES.filter((d) => d.issues.includes(c)).length;
+    return el('option', { value: c, textContent: `${c} (${n})`, disabled: !n });
+  }));
+}
+
+function filtered() {
+  const q = document.getElementById('f-search').value.trim().toLowerCase();
+  const cat = document.getElementById('f-category').value;
+  const iss = document.getElementById('f-issue').value;
+  return DISHES.filter((d) =>
+    (!q || d.name.toLowerCase().includes(q) || String(d.sku_id).includes(q)) &&
+    (!cat || d.category_id === cat) &&
+    (!iss || (iss === '__any' ? costIssues(d).length : iss === '__none' ? !costIssues(d).length : d.issues.includes(iss))));
+}
+
+function money(v, price, extra = '') {
+  return el('td', { class: 'r num ' + extra }, rub(v), price > 0 && v != null ? el('small', { textContent: pct(v / price * 100) }) : null);
+}
+
+function renderTable() {
+  const rows = filtered();
+  const val = (d) => sortKey === 'issues' ? costIssues(d).length : d[sortKey];
+  rows.sort((a, b) => {
+    const x = val(a), y = val(b);
+    if (x == null) return 1; if (y == null) return -1;
+    return (typeof x === 'string' ? x.localeCompare(y, 'ru') : x - y) * sortDir;
+  });
+  const out = [];
+  for (const d of rows) {
+    const issues = costIssues(d);
+    const tr = el('tr', { class: 'dish' + (d.dish_id === openId ? ' open' : ''), tabIndex: 0 });
+    tr.dataset.id = d.dish_id;
+    tr.append(
+      el('td', { class: 'name' }, d.name, el('small', { textContent: `артикул ${d.sku_id} · id ${d.dish_id}` })),
+      el('td', { class: 'num muted', textContent: d.category_id }),
+      el('td', { class: 'r num', textContent: rub(d.weight_g, 0) }),
+      money(d.raw, d.price, 'sep'), money(d.packaging, d.price), money(d.articles, d.price),
+      el('td', { class: 'r num strong', textContent: rub(d.cost_total) }),
+      money(d.margin, d.price, d.margin < 0 ? 'neg' : ''), money(d.transport, d.price),
+      el('td', { class: 'r num strong', textContent: rub(d.price) }),
+      el('td', { class: 'r num sep', textContent: rub(d.price_per_kg, 0) }),
+      el('td', { class: 'bar-cell' }, stackBar(d)),
+      el('td', {}, issues.length
+        ? el('div', { class: 'chips' }, ...issues.map((i) => el('span', { class: 'chip', textContent: i })))
+        : el('span', { class: 'ok', textContent: 'Сходится' })),
+    );
+    out.push(tr);
+    if (d.dish_id === openId) out.push(detailRow(d));
+  }
+  document.querySelector('#dishes tbody').replaceChildren(...out);
+  document.getElementById('f-count').textContent = `Показано ${nf(0).format(rows.length)} из ${nf(0).format(DISHES.length)}`;
+  document.querySelectorAll('#dishes th').forEach((th) =>
+    th.setAttribute('aria-sort', th.dataset.k === sortKey ? (sortDir > 0 ? 'ascending' : 'descending') : 'none'));
+}
+
+function glassCard(d) {
+  const total = LAYERS.reduce((s, l) => s + Math.max(0, d[l.k] || 0), 0);
+  const glass = el('div', { class: 'glass', role: 'img', ariaLabel: `Стакан: цена ${rub(d.price)} ₽` });
+  for (const l of LAYERS) {
+    const v = Math.max(0, d[l.k] || 0);
+    if (v && total) glass.append(el('span', { style: `height:${v / total * 100}%;background:${l.color}`, title: `${l.name}: ${rub(v)} ₽` }));
+  }
+  if (total) {
+    const costShare = LAYERS.slice(0, 3).reduce((s, l) => s + Math.max(0, d[l.k] || 0), 0) / total;
+    glass.append(el('div', { class: 'cost-line', style: `bottom:${costShare * 100}%`, title: `Себестоимость ${rub(d.cost_total)} ₽` }));
+  }
+
+  const kv = el('div', { class: 'kv' }, el('span'), el('span', { class: 'h' }, 'Слой'), el('span', { class: 'h r' }, '₽'), el('span', { class: 'h r' }, 'Доля'));
+  const row = (sw, name, v, cls = '') => kv.append(
+    el('span', {}, sw), el('span', { class: cls, textContent: name }),
+    el('span', { class: 'r num ' + cls, textContent: rub(v) }),
+    el('span', { class: 'r num muted ' + cls, textContent: d.price > 0 && v != null ? pct(v / d.price * 100) : '' }));
+  // сверху вниз, как в стакане: цена, надбавки, себестоимость, её слои
+  row('', 'Цена', d.price, 'strong');
+  for (const l of [...LAYERS].reverse().slice(0, 2)) row(swatch(l.color), l.name, d[l.k]);
+  row('', 'Себестоимость', d.cost_total, 'total');
+  for (const l of [...LAYERS].reverse().slice(2)) row(swatch(l.color), l.name, d[l.k]);
+
+  return el('div', { class: 'card' }, el('h2', { textContent: 'Стакан блюда' }),
+    el('div', { class: 'glass-wrap' }, glass, kv),
+    el('div', { class: 'note', textContent:
+      `Пунктир — уровень себестоимости. Маржа ${pct(d.margin_pct)} к себестоимости. ${rub(d.price_per_kg, 0)} ₽ за кг. ` +
+      `Закупочная цена ВВ ${rub(d.purchase)} ₽. Суммы ${d.vat_basis}.` }));
+}
+
+function checkCard(d) {
+  const kv = el('div', { class: 'kv', style: 'grid-template-columns:1fr auto auto' },
+    el('span', { class: 'h' }, ''), el('span', { class: 'h r' }, 'Итог системы'), el('span', { class: 'h r' }, 'Сумма по составу'));
+  const bad = (a, b) => b != null && Math.abs((a || 0) - b) > Math.max(0.5, 0.01 * Math.max(Math.abs(a || 0), Math.abs(b)));
+  for (const [name, sys, calc] of [['Сырьё', d.raw, d.raw_calc], ['Статьи затрат', d.articles, d.articles_calc]]) {
+    kv.append(el('span', { textContent: name }), el('span', { class: 'r num', textContent: rub(sys) }),
+      el('span', { class: 'r num' + (bad(sys, calc) ? ' bad' : ''), textContent: rub(calc) }));
+  }
+  const kb = el('div', { class: 'kv', style: 'grid-template-columns:1fr auto auto;margin-top:16px' },
+    el('span', { class: 'h' }, 'КБЖУ, справочно'), el('span', { class: 'h r' }, 'На 100 г'), el('span', { class: 'h r' }, `На ${rub(d.weight_g, 0)} г`));
+  for (const [key, name, dg] of [['kcal', 'Ккал', 0], ['protein', 'Белки, г', 1], ['fat', 'Жиры, г', 1], ['carbs', 'Углеводы, г', 1]]) {
+    kb.append(el('span', { textContent: name }), el('span', { class: 'r num', textContent: rub(d[key], dg) }),
+      el('span', { class: 'r num', textContent: d[key] == null ? '—' : rub(d[key] * d.weight_g / 100, dg) }));
+  }
+  const issues = d.issues;
+  return el('div', { class: 'card' }, el('h2', { textContent: 'Проверка' }),
+    issues.length ? el('div', { class: 'chips', style: 'margin-top:10px;max-width:none' }, ...issues.map((i) => el('span', { class: 'chip', textContent: i })))
+      : el('div', { class: 'ok', style: 'margin-top:10px', textContent: 'Замечаний нет' }),
+    el('div', { style: 'margin-top:12px' }, kv), kb);
+}
+
+function compCard(d) {
+  const comp = COMP.get(d.dish_id) || [];
+  const t = el('table');
+  t.append(el('thead', {}, el('tr', {}, ...['Позиция', 'Поставщик', 'Количество', 'Цена', '₽'].map((h, i) =>
+    el('th', { class: i > 1 ? 'r' : '', textContent: h })))));
+  const tb = el('tbody');
+  let layer = null;
+  for (const c of comp) {
+    if (c.layer !== layer) {
+      layer = c.layer;
+      const sum = comp.filter((x) => x.layer === layer).reduce((s, x) => s + (x.cost || 0), 0);
+      const color = LAYERS.find((l) => l.name === layer)?.color;
+      tb.append(el('tr', { class: 'layer' }, el('td', { colSpan: 4 }, color ? swatch(color) : null, layer), el('td', { class: 'r num', textContent: rub(sum) })));
+    }
+    tb.append(el('tr', {},
+      el('td', { textContent: c.item ?? '—' }),
+      el('td', { class: 'muted', textContent: c.supplier ?? '' }),
+      el('td', { class: 'r num', textContent: c.qty == null ? '' : `${rub(c.qty, 2)} ${c.qty_unit ?? ''}` }),
+      el('td', { class: 'r num', textContent: c.price == null ? '' : `${rub(c.price)} ${c.price_unit ?? ''}` }),
+      el('td', { class: 'r num', textContent: rub(c.cost) })));
+  }
+  if (!comp.length) tb.append(el('tr', {}, el('td', { colSpan: 5, class: 'muted', textContent: 'Состав стакана не заполнен.' })));
+  t.append(tb);
+  return el('div', { class: 'card comp' }, el('h2', { textContent: 'Из чего состоит стакан' }), el('div', { style: 'overflow-x:auto' }, t));
+}
+
+const detailRow = (d) => el('tr', { class: 'detail' },
+  el('td', { colSpan: COLS }, el('div', { class: 'detail-grid' }, glassCard(d), checkCard(d)), compCard(d)));
+
+document.querySelector('#dishes thead').addEventListener('click', (e) => {
+  const th = e.target.closest('th[data-k]');
+  if (!th) return;
+  if (sortKey === th.dataset.k) sortDir = -sortDir;
+  else { sortKey = th.dataset.k; sortDir = ['name', 'category_id'].includes(sortKey) ? 1 : -1; }
+  renderTable();
+});
+const toggle = (tr) => { const id = Number(tr.dataset.id); openId = openId === id ? null : id; renderTable(); };
+document.querySelector('#dishes tbody').addEventListener('click', (e) => { const tr = e.target.closest('tr.dish'); if (tr) toggle(tr); });
+document.querySelector('#dishes tbody').addEventListener('keydown', (e) => {
+  const tr = e.target.closest('tr.dish');
+  if (tr && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); toggle(tr); }
+});
+for (const id of ['f-search', 'f-category', 'f-issue']) document.getElementById(id).addEventListener('input', renderTable);
+
+// Данные лежат зашифрованными (PBKDF2-SHA256 + AES-GCM, сжатый JSON); ключ выводится из пароля в браузере.
+const b64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+async function decrypt(pw) {
+  const r = await fetch('data.enc', { cache: 'no-cache' });
+  if (!r.ok) throw new Error(`Файл данных не загрузился (${r.status}).`);
+  const enc = await r.json();
+  const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw), 'PBKDF2', false, ['deriveKey']);
+  const key = await crypto.subtle.deriveKey({ name: 'PBKDF2', salt: b64(enc.salt), iterations: enc.iter, hash: 'SHA-256' },
+    base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']);
+  let plain;
+  try { plain = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(enc.iv) }, key, b64(enc.ct)); }
+  catch { throw new Error('Неверный пароль.'); }
+  const text = await new Response(new Blob([plain]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+  return JSON.parse(text);
+}
+
+function start({ dishes, components, meta }) {
+  DISHES = dishes; META = meta;
+  for (const c of components) { if (!COMP.has(c.dish_id)) COMP.set(c.dish_id, []); COMP.get(c.dish_id).push(c); }
+  document.getElementById('gate-wrap').hidden = true;
+  document.getElementById('app').hidden = false;
+  renderSummary();
+  renderTable();
+}
+
+async function unlock(pw) {
+  const btn = document.getElementById('g-btn'), msg = document.getElementById('g-msg');
+  btn.disabled = true; msg.textContent = '';
+  try {
+    start(await decrypt(pw));
+    try { sessionStorage.setItem('cost-stack-pw', pw); } catch {}
+  } catch (err) {
+    msg.textContent = err.message;
+    try { sessionStorage.removeItem('cost-stack-pw'); } catch {}
+  } finally { btn.disabled = false; }
+}
+document.getElementById('g-btn').addEventListener('click', () => unlock(document.getElementById('g-pass').value));
+document.getElementById('g-pass').addEventListener('keydown', (e) => { if (e.key === 'Enter') unlock(e.target.value); });
+let saved = null;
+try { saved = sessionStorage.getItem('cost-stack-pw'); } catch {}
+if (saved) unlock(saved); else document.getElementById('g-pass').focus();
+</script>
+</body>
+</html>
