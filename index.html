@@ -73,6 +73,7 @@ th[aria-sort="ascending"] button::after { content: " ↑"; }
 th[aria-sort="descending"] button::after { content: " ↓"; }
 td.r, th.r { text-align: right; }
 td.r small { display: block; color: var(--muted); font-size: 11px; }
+td.r small.bad { color: var(--warn); white-space: nowrap; }
 td.strong { font-weight: 600; }
 td.sep, th.sep { border-left: 1px solid var(--line); }
 tbody tr.dish { cursor: pointer; }
@@ -80,8 +81,8 @@ tbody tr.dish:hover, tbody tr.dish.open { background: var(--green-soft); }
 .name { min-width: 220px; max-width: 340px; }
 .name small { display: block; color: var(--muted); }
 .bar-cell { min-width: 120px; }
-.chips { display: flex; flex-wrap: wrap; gap: 4px; max-width: 240px; }
-.chip { font-size: 11px; line-height: 1.3; padding: 2px 7px; border-radius: 999px; background: var(--warn-soft); color: var(--warn); white-space: nowrap; }
+.chips { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; min-width: 190px; }
+.chip { font-size: 11px; line-height: 1.3; padding: 2px 8px; border-radius: 10px; background: var(--warn-soft); color: var(--warn); }
 .ok { color: var(--green-dark); font-size: 12px; }
 .muted { color: var(--muted); }
 .neg { color: var(--warn); }
@@ -261,8 +262,13 @@ function filtered() {
     (!iss || (iss === '__any' ? costIssues(d).length : iss === '__none' ? !costIssues(d).length : d.issues.includes(iss))));
 }
 
-function money(v, price, extra = '') {
-  return el('td', { class: 'r num ' + extra }, rub(v), price > 0 && v != null ? el('small', { textContent: pct(v / price * 100) }) : null);
+const mismatch = (sys, calc) => calc != null && Math.abs((sys || 0) - calc) > Math.max(0.5, 0.01 * Math.max(Math.abs(sys || 0), Math.abs(calc)));
+
+// calc — сумма по составу; при расхождении с итогом системы показывается под ячейкой
+function money(v, price, extra = '', calc = null) {
+  return el('td', { class: 'r num ' + extra }, rub(v),
+    price > 0 && v != null ? el('small', { textContent: pct(v / price * 100) }) : null,
+    mismatch(v, calc) ? el('small', { class: 'bad', textContent: `по составу ${rub(calc)}` }) : null);
 }
 
 function renderTable() {
@@ -282,7 +288,7 @@ function renderTable() {
       el('td', { class: 'name' }, d.name, el('small', { textContent: `артикул ${d.sku_id} · id ${d.dish_id}` })),
       el('td', { class: 'num muted', textContent: d.category_id }),
       el('td', { class: 'r num', textContent: rub(d.weight_g, 0) }),
-      money(d.raw, d.price, 'sep'), money(d.packaging, d.price), money(d.articles, d.price),
+      money(d.raw, d.price, 'sep', d.raw_calc), money(d.packaging, d.price), money(d.articles, d.price, '', d.articles_calc),
       el('td', { class: 'r num strong', textContent: rub(d.cost_total) }),
       money(d.margin, d.price, d.margin < 0 ? 'neg' : ''), money(d.transport, d.price),
       el('td', { class: 'r num strong', textContent: rub(d.price) }),
